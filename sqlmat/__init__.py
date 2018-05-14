@@ -283,7 +283,7 @@ class Query:
                 tq = Expr('and', tq, q)
             else:
                 tq = q
-        return self.clone(expr=Expr('not', tq))
+        return self.clone(expr=Expr('not', tq, None))
 
     def offset(self, offset_num):
         assert offset_num >= 0
