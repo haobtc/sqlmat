@@ -96,7 +96,7 @@ class Expr:
             return '-{}'.format(
                 self.left.get_sql(params))
         elif self.op == 'not':
-            return 'not {}'.format(
+            return 'not ({})'.format(
                 self.left.get_sql(params))
         elif self.op == 'in':
             left_stmt = self.left.get_sql(params)
@@ -276,14 +276,19 @@ class Query:
             return self.clone(expr=Expr('or', self.expr, tq))
 
     def exclude(self, *args, **kw):
-        tq = self.expr
+        tq = None
         for q in list(args) + [
-                Expr('<>', field(k), v) for k, v in kw.items()]:
+                Expr('=', field(k), v) for k, v in kw.items()]:
             if tq is not None:
                 tq = Expr('and', tq, q)
             else:
                 tq = q
-        return self.clone(expr=Expr('not', tq, None))
+        assert tq is not None
+        if self.expr:
+            ex = Expr('and', self.expr, Expr('not', tq, None))
+        else:
+            ex = Expr('not', tq, None)
+        return self.clone(expr=ex)
 
     def offset(self, offset_num):
         assert offset_num >= 0
