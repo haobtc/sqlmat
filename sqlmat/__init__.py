@@ -73,6 +73,14 @@ class Expr:
         list_expr = Expr('list', alist, None)
         return Expr('in', self, list_expr.left)
 
+    def _not(self):
+        return Expr('not', self)
+
+    def not_in(self, *alist):
+        assert alist
+        list_expr = Expr('list', alist, None)
+        return Expr('not in', self, list_expr.left)
+
     def is_binop(self):
         return self.op in ('+', '-', '*', '/', '^')
 
@@ -87,6 +95,9 @@ class Expr:
         elif self.op == 'neg':
             return '-{}'.format(
                 self.left.get_sql(params))
+        elif self.op == 'not':
+            return 'not {}'.format(
+                self.left.get_sql(params))
         elif self.op == 'in':
             left_stmt = self.left.get_sql(params)
             places = []
@@ -95,6 +106,15 @@ class Expr:
                 places.append('${}'.format(len(params)))
 
             return '{} in ({})'.format(
+                left_stmt, ','.join(places))
+        elif self.op == 'not in':
+            left_stmt = self.left.get_sql(params)
+            places = []
+            for v in self.right:
+                params.append(v)
+                places.append('${}'.format(len(params)))
+
+            return '{} not in ({})'.format(
                 left_stmt, ','.join(places))
         else:
             left_stmt = self.left.get_sql(params)
@@ -263,7 +283,7 @@ class Query:
                 tq = Expr('and', tq, q)
             else:
                 tq = q
-        return self.clone(expr=tq)
+        return self.clone(expr=Expr('not', tq))
 
     def offset(self, offset_num):
         assert offset_num >= 0
