@@ -74,7 +74,7 @@ class Expr:
         return Expr('in', self, list_expr.left)
 
     def _not(self):
-        return Expr('not', self)
+        return Expr('not', self, None)
 
     def not_in(self, *alist):
         assert alist
