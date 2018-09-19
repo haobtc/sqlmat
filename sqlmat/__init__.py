@@ -178,6 +178,16 @@ class Table:
         t.joins = self.joins + [Join(other, field1, field2)]
         return t
 
+    def left_join(self, other, field1, field2):
+        t = Table(self.name)
+        t.joins = self.joins + [Join(other, field1, field2, join_type='LEFT')]
+        return t
+
+    def right_join(self, other, field1, field2):
+        t = Table(self.name)
+        t.joins = self.joins + [Join(other, field1, field2, join_type='RIGHT')]
+        return t
+
     def filter(self, *args, **kw):
         return Query(self).filter(*args, **kw)
 
@@ -311,14 +321,14 @@ class Query:
             orders = []
             for order in self.ordering:
                 if order.startswith('-'):
-                    orders.append('{} DESC'.format(order[1:]))
+                    orders.append('{} DESC'.format(wrap(order[1:])))
                 else:
-                    orders.append(order)
+                    orders.append(wrap(order))
             return 'ORDER BY {}'.format(','.join(orders))
 
     def get_group_sql(self):
         if self.grouping:
-            groups = list(self.grouping)
+            groups = [wrap(g) for g in self.grouping]
             return 'GROUP BY {}'.format(','.join(groups))
 
     async def select(self, *fields, **kw):
@@ -380,7 +390,8 @@ class Select(Action):
 
     def get_sql(self):
         lines = [
-            'SELECT {}'.format(','.join(self.fields)),
+            'SELECT {}'.format(
+                ','.join(self.fields)),
             ]
 
         lines.append(
