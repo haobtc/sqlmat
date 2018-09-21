@@ -73,6 +73,12 @@ class Expr:
         list_expr = Expr('list', alist, None)
         return Expr('in', self, list_expr.left)
 
+    def is_null(self):
+        return Expr('=', self, None)
+
+    def is_not_null(self):
+        return Expr('<>', self, None)
+
     def _not(self):
         return Expr('not', self, None)
 
@@ -116,6 +122,16 @@ class Expr:
 
             return '{} not in ({})'.format(
                 left_stmt, ','.join(places))
+        elif self.op == '=' and self.right is None:
+            left_stmt = self.left.get_sql(params)
+            if self.left.is_binop():
+                left_stmt = '({})'.format(left_stmt)
+            return '{} is null'.format(left_stmt)
+        elif self.op == '<>' and self.right is None:
+            left_stmt = self.left.get_sql(params)
+            if self.left.is_binop():
+                left_stmt = '({})'.format(left_stmt)
+            return '{} is not null'.format(left_stmt)
         else:
             left_stmt = self.left.get_sql(params)
             right = self.parse(self.right)
