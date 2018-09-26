@@ -1,9 +1,16 @@
+import re
 import asyncpg
 
+id_pattern = re.compile(r'\w+$')
+
 def wrap(name):
-    return '.'.join(
-        '"{}"'.format(term)
-        for term in name.split('.'))
+    arr = []
+    for term in name.split('.'):
+        if id_pattern.match(term):
+            arr.append('"{}"'.format(term))
+        else:
+            arr.append(term)
+    return '.'.join(arr)
 
 _pool = None
 def set_default_pool(pool):
@@ -407,7 +414,7 @@ class Select(Action):
     def get_sql(self):
         lines = [
             'SELECT {}'.format(
-                ','.join(self.fields)),
+                ','.join([wrap(f) for f in self.fields])),
             ]
 
         lines.append(
