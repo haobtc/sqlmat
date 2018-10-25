@@ -80,6 +80,15 @@ class Expr:
         list_expr = Expr('list', alist, None)
         return Expr('in', self, list_expr.left)
 
+    def like(self, pattern):
+        return Expr('like', self, pattern)
+
+    def ilike(self, pattern):
+        return Expr('ilike', self, pattern)
+
+    def startswith(self, prefix):
+        return self.like('{}%'.format(prefix))
+
     def is_null(self):
         return Expr('=', self, None)
 
@@ -95,7 +104,7 @@ class Expr:
         return Expr('not in', self, list_expr.left)
 
     def is_binop(self):
-        return self.op in ('+', '-', '*', '/', '^')
+        return self.op in ('+', '-', '*', '/', '^', 'like', 'ilike')
 
     def get_sql(self, params):
         if self.op == 'value':
