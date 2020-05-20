@@ -1,9 +1,10 @@
+from typing import Any, Optional, List, Tuple, Union
 import re
 import asyncpg
 
 id_pattern = re.compile(r'\w+$')
 
-def wrap(name):
+def wrap(name: str) -> str:
     arr = []
     for term in name.split('.'):
         if id_pattern.match(term):
@@ -18,95 +19,99 @@ def set_default_pool(pool):
     _pool = pool
 
 class Expr:
+    op: str
+    left: Any
+    right: Any
+
     @classmethod
-    def parse(cls, v):
-        if isinstance(v, cls):
+    def parse(cls, v: Any) -> 'Expr':
+        if isinstance(v, Expr):
             return v
         else:
             return Expr('value', v, None)
 
-    def __str__(self):
-        return '({} {} {})'.format(self.op, self.left, self.right)
+    def __str__(self) -> str:
+        return f'({self.op} {self.left} {self.right})'
 
-    def __init__(self, op, left, right):
+    def __init__(self, op: str, left: Any, right: Any):
         self.op = op
         self.left = left
         self.right = right
 
-    def __eq__(self, other):
+    def __eq__(self, other: Any) -> 'Expr': # type: ignore
         return Expr('=', self, other)
 
-    def __ne__(self, other):
+    def __ne__(self, other: Any) -> 'Expr': # type: ignore
         return Expr('<>', self, other)
 
-    def __lt__(self, other):
+    def __lt__(self, other: Any) -> 'Expr':
         return Expr('<', self, other)
 
-    def __le__(self, other):
+    def __le__(self, other: Any) -> 'Expr':
         return Expr('<=', self, other)
 
-    def __gt__(self, other):
+    def __gt__(self, other: Any) -> 'Expr':
         return Expr('>', self, other)
 
-    def __ge__(self, other):
+    def __ge__(self, other: Any) -> 'Expr':
         return Expr('>=', self, other)
 
-    def __or__(self, other):
+    def __or__(self, other: Any) -> 'Expr':
         return Expr('or', self, other)
 
-    def __and__(self, other):
+    def __and__(self, other: Any) -> 'Expr':
         return Expr('and', self, other)
 
-    def __neg__(self):
-        return Expr('neg', self)
+    def __neg__(self) -> 'Expr':
+        return Expr('neg', self, None)
 
-    def __add__(self, other):
+    def __add__(self, other: Any) -> 'Expr':
         return Expr('+', self, other)
 
-    def __sub__(self, other):
+    def __sub__(self, other: Any) -> 'Expr':
         return Expr('-', self, other)
 
-    def __mul__(self, other):
+    def __mul__(self, other: Any) -> 'Expr':
         return Expr('*', self, other)
 
-    def __div__(self, other):
+    def __div__(self, other: Any) -> 'Expr':
         return Expr('/', self, other)
 
-    def __contains__(self, value):
+    def __contains__(self, value: Any) -> 'Expr':
         return Expr('in', self.parse(value) , self.left)
 
-    def _in(self, *alist):
+    def _in(self, *alist: Any) -> 'Expr':
         assert alist
         list_expr = Expr('list', alist, None)
         return Expr('in', self, list_expr.left)
 
-    def like(self, pattern):
+    def like(self, pattern: str) -> 'Expr':
         return Expr('like', self, pattern)
 
-    def ilike(self, pattern):
+    def ilike(self, pattern: str) -> 'Expr':
         return Expr('ilike', self, pattern)
 
-    def startswith(self, prefix):
+    def startswith(self, prefix: str) -> 'Expr':
         return self.like('{}%'.format(prefix))
 
-    def is_null(self):
+    def is_null(self) -> 'Expr':
         return Expr('=', self, None)
 
-    def is_not_null(self):
+    def is_not_null(self) -> 'Expr':
         return Expr('<>', self, None)
 
-    def _not(self):
+    def _not(self) -> 'Expr':
         return Expr('not', self, None)
 
-    def not_in(self, *alist):
+    def not_in(self, *alist) -> 'Expr':
         assert alist
         list_expr = Expr('list', alist, None)
         return Expr('not in', self, list_expr.left)
 
-    def is_binop(self):
+    def is_binop(self) -> bool:
         return self.op in ('+', '-', '*', '/', '^', 'like', 'ilike')
 
-    def get_sql(self, params):
+    def get_sql(self, params) -> str:
         if self.op == 'value':
             params.append(self.left)
             return '${}'.format(len(params))
@@ -123,6 +128,7 @@ class Expr:
         elif self.op == 'in':
             left_stmt = self.left.get_sql(params)
             places = []
+            assert isinstance(self.right, (tuple, list))
             for v in self.right:
                 params.append(v)
                 places.append('${}'.format(len(params)))
@@ -132,6 +138,7 @@ class Expr:
         elif self.op == 'not in':
             left_stmt = self.left.get_sql(params)
             places = []
+            assert isinstance(self.right, (tuple, list))
             for v in self.right:
                 params.append(v)
                 places.append('${}'.format(len(params)))
@@ -175,13 +182,13 @@ def table(name):
     return Table(name)
 
 class Join:
-    def __init__(self, other_table_name, field1, field2, join_type='INNER'):
+    def __init__(self, other_table_name: str, field1: str, field2: str, join_type: str='INNER'):
         self.other_table_name = other_table_name
         self.field1 = field1
         self.field2 = field2
         self.join_type = join_type
 
-    def statement(self):
+    def statement(self) -> str:
         return '{} JOIN {} ON {} = {}'.format(
             self.join_type,
             wrap(self.other_table_name),
@@ -189,13 +196,14 @@ class Join:
             wrap(self.field2))
 
 class Table:
-
-    def __init__(self, name):
+    name: str
+    joins: List[Join]
+    def __init__(self, name: str):
         self.name = name
         self.joins = []
         self.conn = None
 
-    def using(self, conn):
+    def using(self, conn) -> 'Table':
         t = Table(self.name)
         t.joins = self.joins[::]
         t.conn = conn
@@ -205,32 +213,32 @@ class Table:
         assert _pool
         return _pool
 
-    def join(self, other, field1, field2):
+    def join(self, other: str, field1: str, field2: str) -> 'Table':
         t = Table(self.name)
         t.joins = self.joins + [Join(other, field1, field2)]
         return t
 
-    def left_join(self, other, field1, field2):
+    def left_join(self, other: str, field1: str, field2: str) -> 'Table':
         t = Table(self.name)
         t.joins = self.joins + [Join(other, field1, field2, join_type='LEFT')]
         return t
 
-    def right_join(self, other, field1, field2):
+    def right_join(self, other: str, field1: str, field2: str) -> 'Table':
         t = Table(self.name)
         t.joins = self.joins + [Join(other, field1, field2, join_type='RIGHT')]
         return t
 
-    def filter(self, *args, **kw):
+    def filter(self, *args, **kw) -> 'Query':
         return Query(self).filter(*args, **kw)
 
-    def exclude(self, *args, **kw):
+    def exclude(self, *args, **kw) -> 'Query':
         return Query(self).exclude(*args, **kw)
 
-    async def insert(self, **kw):
+    async def insert(self, **kw) -> 'Insert':
         assert kw
         return await Insert(self, kw).run()
 
-    async def upsert(self, defaults=None, **kw):
+    async def upsert(self, defaults=None, **kw) -> Tuple[Union[Insert, Update], bool]:
         assert kw
         if defaults is None:
             defaults = {}
@@ -244,7 +252,7 @@ class Table:
             return await self.filter(
                 **kw).update(**defaults), False
 
-    async def get_or_insert(self, defaults=None, **kw):
+    async def get_or_insert(self, defaults=None, **kw) -> Tuple[Any, bool]:
         assert kw
         if defaults is None:
             defaults = {}
@@ -363,9 +371,9 @@ class Query:
             groups = [wrap(g) for g in self.grouping]
             return 'GROUP BY {}'.format(','.join(groups))
 
-    async def select(self, *fields, **kw):
+    async def select(self, *fields, **kw) -> Any:
         if not fields:
-            fields = ['*']
+            fields = ('*',)
         return await Select(self, fields, **kw).get_all()
 
     get_all = select
@@ -375,7 +383,7 @@ class Query:
             fields = ['*']
         return await Select(self, fields, **kw).get_one()
 
-    async def run(self):
+    async def run(self) -> Any:
         return await self.select()
 
     async def update(self, **kw):
@@ -460,6 +468,12 @@ class Select(Action):
         return await self.run(return_one=False)
 
     async def get_one(self):
+        if self.query.limiting is None:
+            # add limit 1, to reduce the results
+            return await Select(
+                self.query.limit(1),
+                self.fields,
+                self.for_update).get_one()
         return await self.run(return_one=True)
 
 class Delete(Action):
@@ -494,8 +508,8 @@ class Update(Action):
             arr.append(expr.get_sql(params))
         return ','.join(arr)
 
-    def get_sql(self, returning=True):
-        params = []
+    def get_sql(self, returning=True) -> Tuple[str, List['Expr']]:
+        params: List['Expr'] = []
         set_stmt = self.get_value_sql(params)
         query_stmt = self.query.expr.get_sql(params)
 
@@ -511,7 +525,11 @@ class Update(Action):
         return '\n'.join(lines), params
 
 class Insert(Action):
-    def __init__(self, table, kw):
+    table: Table
+    fields: List[str]
+    values: List['Expr']
+
+    def __init__(self, table: 'Table', kw):
         self.table = table
         self.fields = []
         self.values = []
@@ -521,16 +539,16 @@ class Insert(Action):
             assert ve.op == 'value'
             self.values.append(ve)
 
-    def get_table(self):
+    def get_table(self) -> 'Table':
         return self.table
 
-    def get_value_sql(self, params):
+    def get_value_sql(self, params: List[Any]) -> str:
         return ','.join(
             expr.get_sql(params)
             for expr in self.values)
 
-    def get_sql(self):
-        params = []
+    def get_sql(self) -> Tuple[str, List['Expr']]:
+        params: List['Expr'] = []
         value_sql = self.get_value_sql(params)
         lines = [
             'INSERT INTO {}({})'.format(
