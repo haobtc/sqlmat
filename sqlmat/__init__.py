@@ -238,7 +238,7 @@ class Table:
         assert kw
         return await Insert(self, kw).run()
 
-    async def upsert(self, defaults=None, **kw) -> Tuple[Union[Insert, Update], bool]:
+    async def upsert(self, defaults=None, **kw) -> Tuple[Union['Insert', 'Update'], bool]:
         assert kw
         if defaults is None:
             defaults = {}
