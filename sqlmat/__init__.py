@@ -1,8 +1,49 @@
-from typing import Any, Optional, List, Tuple, Union
-import re
-import asyncpg
+from typing import Any, Optional, List, Tuple, Union, TypeVar, Type, Dict
 
+import re
+from collections import ItemsView, KeysView, ValuesView
+import asyncpg # type: ignore
+from asyncpg.pool import Pool # type: ignore
+from asyncpg import Record
+
+T = TypeVar('T')
+SqlType = Tuple[str, List['Expr']]
+FieldsType = Union[List[str], Tuple[str, ...]]
 id_pattern = re.compile(r'\w+$')
+
+class DBRow:
+    def __init__(self, row: Dict[str, Any]):
+        self.row = row
+
+    def __getattr__(self, key: str) -> Any:
+        try:
+            return self.row[key]
+        except KeyError:
+            raise AttributeError("'{}' object has no attribute '{}'".format(self.__class__.__name__, key))
+
+    def __getitem__(self, key: str) -> Any:
+        return self.row[key]
+
+    def get(self, key: str, default: Any=None) -> Any:
+        return self.row.get(key, default)
+
+    def __len__(self) -> int:
+        return len(self.row)
+
+    def __contains__(self, name) -> bool:
+        return name in self.row
+
+    def items(self) -> ItemsView:
+        return self.row.items()
+
+    def keys(self) -> KeysView:
+        return self.row.keys()
+
+    def values(self) -> ValuesView:
+        return self.row.values()
+
+    def __str__(self) -> str:
+        return str(self.row)
 
 def wrap(name: str) -> str:
     arr = []
@@ -13,8 +54,8 @@ def wrap(name: str) -> str:
             arr.append(term)
     return '.'.join(arr)
 
-_pool = None
-def set_default_pool(pool):
+_pool: Optional[Pool] = None
+def set_default_pool(pool: Pool):
     global _pool
     _pool = pool
 
@@ -111,7 +152,7 @@ class Expr:
     def is_binop(self) -> bool:
         return self.op in ('+', '-', '*', '/', '^', 'like', 'ilike')
 
-    def get_sql(self, params) -> str:
+    def get_sql_str(self, params: List['Expr']) -> str:
         if self.op == 'value':
             params.append(self.left)
             return '${}'.format(len(params))
@@ -121,12 +162,12 @@ class Expr:
             return self.left
         elif self.op == 'neg':
             return '-{}'.format(
-                self.left.get_sql(params))
+                self.left.get_sql_str(params))
         elif self.op == 'not':
             return 'not ({})'.format(
-                self.left.get_sql(params))
+                self.left.get_sql_str(params))
         elif self.op == 'in':
-            left_stmt = self.left.get_sql(params)
+            left_stmt = self.left.get_sql_str(params)
             places = []
             assert isinstance(self.right, (tuple, list))
             for v in self.right:
@@ -136,7 +177,7 @@ class Expr:
             return '{} in ({})'.format(
                 left_stmt, ','.join(places))
         elif self.op == 'not in':
-            left_stmt = self.left.get_sql(params)
+            left_stmt = self.left.get_sql_str(params)
             places = []
             assert isinstance(self.right, (tuple, list))
             for v in self.right:
@@ -146,19 +187,19 @@ class Expr:
             return '{} not in ({})'.format(
                 left_stmt, ','.join(places))
         elif self.op == '=' and self.right is None:
-            left_stmt = self.left.get_sql(params)
+            left_stmt = self.left.get_sql_str(params)
             if self.left.is_binop():
                 left_stmt = '({})'.format(left_stmt)
             return '{} is null'.format(left_stmt)
         elif self.op == '<>' and self.right is None:
-            left_stmt = self.left.get_sql(params)
+            left_stmt = self.left.get_sql_str(params)
             if self.left.is_binop():
                 left_stmt = '({})'.format(left_stmt)
             return '{} is not null'.format(left_stmt)
         else:
-            left_stmt = self.left.get_sql(params)
+            left_stmt = self.left.get_sql_str(params)
             right = self.parse(self.right)
-            right_stmt = right.get_sql(params)
+            right_stmt = right.get_sql_str(params)
             if self.is_binop():
                 if self.left.is_binop():
                     left_stmt =  '({})'.format(left_stmt)
@@ -167,18 +208,18 @@ class Expr:
             return '{} {} {}'.format(
                 left_stmt, self.op, right_stmt)
 
-def field(name):
+def field(name: str) -> 'Expr':
     return Expr('field', name, None)
 
 F = field
 
-def safe(name):
+def safe(name: str) -> 'Expr':
     return Expr('safe', name, None)
 
-def list_expr(*values):
+def list_expr(*values) -> 'Expr':
     return Expr('list', values, None)
 
-def table(name):
+def table(name: str) -> 'Table':
     return Table(name)
 
 class Join:
@@ -209,8 +250,8 @@ class Table:
         t.conn = conn
         return t
 
-    async def get_pool(self):
-        assert _pool
+    async def get_pool(self) -> Pool:
+        assert _pool is not None
         return _pool
 
     def join(self, other: str, field1: str, field2: str) -> 'Table':
@@ -267,14 +308,26 @@ class Table:
     async def delete(self):
         return await Query(self).delete()
 
-    async def select(self, *fields, **kw):
+    async def select(self, *fields: str, **kw) -> List[Record]:
         return await Query(self).select(*fields, **kw)
 
-    async def get_one(self, *fields):
+    async def get_one(self, *fields: str) -> Optional[Record]:
         return await Query(self).get_one(*fields)
 
-    async def get_all(self, *fields):
+    async def get_all(self, *fields: str) -> List[Record]:
         return await Query(self).get_all(*fields)
+
+    async def get_one_as(self, t: Type[T], *fields: str) -> Optional[T]:
+        assert issubclass(t, DBRow)
+        r = await self.get_one(*fields)
+        if r is not None:
+            return t(r)   # type: ignore
+        else:
+            return None
+
+    async def get_all_as(self, t: Type[T], *fields: str) -> List[T]:
+        assert issubclass(t, DBRow)
+        return [t(r) for r in await self.get_all(*fields)] # type: ignore
 
     async def update(self, **kw):
         return await Query(self).update(**kw)
@@ -371,17 +424,29 @@ class Query:
             groups = [wrap(g) for g in self.grouping]
             return 'GROUP BY {}'.format(','.join(groups))
 
-    async def select(self, *fields, **kw) -> Any:
+    async def select(self, *fields: str, **kw) -> List[Record]:
         if not fields:
             fields = ('*',)
         return await Select(self, fields, **kw).get_all()
 
     get_all = select
 
-    async def get_one(self, *fields, **kw):
+    async def get_one(self, *fields: str, **kw) -> Optional[Record]:
         if not fields:
-            fields = ['*']
+            fields = ('*',)
         return await Select(self, fields, **kw).get_one()
+
+    async def get_one_as(self, t: Type[T], *fields: str, **kw) -> Optional[T]:
+        assert issubclass(t, DBRow)
+        r = await self.get_one(*fields, **kw)
+        if r is not None:
+            return t(r)  # type: ignore
+        else:
+            return None
+
+    async def get_all_as(self, t: Type[T], *fields: str, **kw) -> List[T]:
+        assert issubclass(t, DBRow)
+        return [t(r) for r in await self.get_all(*fields, **kw)] # type: ignore
 
     async def run(self) -> Any:
         return await self.select()
@@ -395,9 +460,9 @@ class Query:
 
     def get_condition_sql(self, params):
         if self.expr:
-            return self.expr.get_sql(params)
+            return self.expr.get_sql_str(params)
         else:
-            return Expr('value', True, None).get_sql(params)
+            return Expr('value', True, None).get_sql_str(params)
 
 class Action:
     def get_table(self):
@@ -419,8 +484,9 @@ class Action:
                 else:
                     return await conn.fetch(stmt, *params)
 
+
 class Select(Action):
-    def __init__(self, query, fields, for_update=False, **kw):
+    def __init__(self, query: 'Query', fields: FieldsType, for_update: bool=False, **kw):
         self.query = query
         self.fields = fields
         self.for_update = for_update
@@ -428,7 +494,7 @@ class Select(Action):
     def get_table(self):
         return self.query.table
 
-    def get_sql(self):
+    def get_sql(self) -> SqlType:
         lines = [
             'SELECT {}'.format(
                 ','.join([wrap(f) for f in self.fields])),
@@ -442,7 +508,7 @@ class Select(Action):
             for join in self.query.table.joins:
                 lines.append(join.statement())
 
-        params = []
+        params: List['Expr'] = []
         query_stmt = self.query.get_condition_sql(params)
         if query_stmt:
             lines.append('WHERE {}'.format(query_stmt))
@@ -464,10 +530,10 @@ class Select(Action):
 
         return '\n'.join(lines), params
 
-    async def get_all(self):
+    async def get_all(self) -> List[Record]:
         return await self.run(return_one=False)
 
-    async def get_one(self):
+    async def get_one(self) -> Optional[Record]:
         if self.query.limiting is None:
             # add limit 1, to reduce the results
             return await Select(
@@ -476,15 +542,27 @@ class Select(Action):
                 self.for_update).get_one()
         return await self.run(return_one=True)
 
+    async def get_one_as(self, t: Type[T]) -> Optional[T]:
+        assert issubclass(t, DBRow)
+        r = await self.get_one()
+        if r is not None:
+            return t(r)           # type: ignore
+        else:
+            return None
+
+    async def get_all_as(self, t: Type[T]) -> List[T]:
+        assert issubclass(t, DBRow)
+        return [t(r) for r in await self.get_all()] # type: ignore
+
 class Delete(Action):
     def __init__(self, query):
         self.query = query
 
-    def get_table(self):
+    def get_table(self) -> 'Table':
         return self.query.table
 
-    def get_sql(self):
-        params = []
+    def get_sql(self) -> SqlType:
+        params: List['Expr'] = []
         query_stmt = self.query.get_condition_sql(params)
         assert not self.query.table.joins
         lines = [
@@ -499,19 +577,19 @@ class Update(Action):
         self.values = [Expr('=', field(k), Expr.parse(v))
                        for k, v in kw.items()]
 
-    def get_table(self):
+    def get_table(self) -> 'Table':
         return self.query.table
 
-    def get_value_sql(self, params):
+    def get_value_sql(self, params: List['Expr']):
         arr = []
         for expr in self.values:
-            arr.append(expr.get_sql(params))
+            arr.append(expr.get_sql_str(params))
         return ','.join(arr)
 
-    def get_sql(self, returning=True) -> Tuple[str, List['Expr']]:
+    def get_sql(self, returning: bool=True) -> SqlType:
         params: List['Expr'] = []
         set_stmt = self.get_value_sql(params)
-        query_stmt = self.query.expr.get_sql(params)
+        query_stmt = self.query.expr.get_sql_str(params)
 
         assert not self.query.table.joins
         lines = [
@@ -544,10 +622,10 @@ class Insert(Action):
 
     def get_value_sql(self, params: List[Any]) -> str:
         return ','.join(
-            expr.get_sql(params)
+            expr.get_sql_str(params)
             for expr in self.values)
 
-    def get_sql(self) -> Tuple[str, List['Expr']]:
+    def get_sql(self) -> SqlType:
         params: List['Expr'] = []
         value_sql = self.get_value_sql(params)
         lines = [
