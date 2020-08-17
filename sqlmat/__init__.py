@@ -6,7 +6,7 @@ import asyncpg # type: ignore
 from asyncpg.pool import Pool # type: ignore
 from asyncpg import Record
 
-T = TypeVar('T')
+
 SqlType = Tuple[str, List['Expr']]
 FieldsType = Union[List[str], Tuple[str, ...]]
 id_pattern = re.compile(r'\w+$')
@@ -44,6 +44,8 @@ class DBRow:
 
     def __str__(self) -> str:
         return str(self.row)
+
+T = TypeVar('T', bound='DBRow')
 
 def wrap(name: str) -> str:
     arr = []
@@ -318,16 +320,14 @@ class Table:
         return await Query(self).get_all(*fields)
 
     async def get_one_as(self, t: Type[T], *fields: str) -> Optional[T]:
-        assert issubclass(t, DBRow)
         r = await self.get_one(*fields)
         if r is not None:
-            return t(r)   # type: ignore
+            return t(r)
         else:
             return None
 
     async def get_all_as(self, t: Type[T], *fields: str) -> List[T]:
-        assert issubclass(t, DBRow)
-        return [t(r) for r in await self.get_all(*fields)] # type: ignore
+        return [t(r) for r in await self.get_all(*fields)]
 
     async def update(self, **kw):
         return await Query(self).update(**kw)
@@ -437,16 +437,14 @@ class Query:
         return await Select(self, fields, **kw).get_one()
 
     async def get_one_as(self, t: Type[T], *fields: str, **kw) -> Optional[T]:
-        assert issubclass(t, DBRow)
         r = await self.get_one(*fields, **kw)
         if r is not None:
-            return t(r)  # type: ignore
+            return t(r)
         else:
             return None
 
     async def get_all_as(self, t: Type[T], *fields: str, **kw) -> List[T]:
-        assert issubclass(t, DBRow)
-        return [t(r) for r in await self.get_all(*fields, **kw)] # type: ignore
+        return [t(r) for r in await self.get_all(*fields, **kw)]
 
     async def run(self) -> Any:
         return await self.select()
@@ -543,16 +541,14 @@ class Select(Action):
         return await self.run(return_one=True)
 
     async def get_one_as(self, t: Type[T]) -> Optional[T]:
-        assert issubclass(t, DBRow)
         r = await self.get_one()
         if r is not None:
-            return t(r)           # type: ignore
+            return t(r)
         else:
             return None
 
     async def get_all_as(self, t: Type[T]) -> List[T]:
-        assert issubclass(t, DBRow)
-        return [t(r) for r in await self.get_all()] # type: ignore
+        return [t(r) for r in await self.get_all()]
 
 class Delete(Action):
     def __init__(self, query):
