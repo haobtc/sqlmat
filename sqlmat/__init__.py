@@ -13,37 +13,40 @@ id_pattern = re.compile(r'\w+$')
 
 class DBRow:
     def __init__(self, row: Dict[str, Any]):
-        self.row = row
+        self._row = row
 
     def __getattr__(self, key: str) -> Any:
         try:
-            return self.row[key]
+            return self._row[key]
         except KeyError:
             raise AttributeError("'{}' object has no attribute '{}'".format(self.__class__.__name__, key))
 
     def __getitem__(self, key: str) -> Any:
-        return self.row[key]
+        return self._row[key]
 
     def get(self, key: str, default: Any=None) -> Any:
-        return self.row.get(key, default)
+        return self._row.get(key, default)
 
     def __len__(self) -> int:
-        return len(self.row)
+        return len(self._row)
 
     def __contains__(self, name) -> bool:
-        return name in self.row
+        return name in self._row
 
     def items(self) -> ItemsView:
-        return self.row.items()
+        return self._row.items()
 
     def keys(self) -> KeysView:
-        return self.row.keys()
+        return self._row.keys()
 
     def values(self) -> ValuesView:
-        return self.row.values()
+        return self._row.values()
 
     def __str__(self) -> str:
-        return str(self.row)
+        return str(self._row)
+
+    def __repr__(self) -> str:
+        return repr(self._row)
 
 T = TypeVar('T', bound='DBRow')
 
@@ -603,7 +606,7 @@ class Insert(Action):
     fields: List[str]
     values: List['Expr']
 
-    def __init__(self, table: 'Table', kw):
+    def __init__(self, table: 'Table', kw: Dict[str, Any]):
         self.table = table
         self.fields = []
         self.values = []
