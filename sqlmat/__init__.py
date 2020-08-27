@@ -4,7 +4,7 @@ import re
 from collections import ItemsView, KeysView, ValuesView
 import asyncpg # type: ignore
 from asyncpg.pool import Pool # type: ignore
-from asyncpg import Record
+from asyncpg import Record, Connection
 
 
 SqlType = Tuple[str, List['Expr']]
@@ -244,20 +244,31 @@ class Join:
 class Table:
     name: str
     joins: List[Join]
+    conn: Optional[Connection] = None
+    pool: Optional[Pool] = None
     def __init__(self, name: str):
         self.name = name
         self.joins = []
         self.conn = None
+        self.pool = None
 
-    def using(self, conn) -> 'Table':
+    def using(self, conn_or_pool: Union[Connection, Pool]) -> 'Table':
         t = Table(self.name)
         t.joins = self.joins[::]
-        t.conn = conn
+        if isinstance(conn_or_pool, Connection):
+            t.conn = conn_or_pool
+        elif isinstance(conn_or_pool, Pool):
+            t.pool = conn_or_pool
+        else:
+            assert False, f'invalid conn type '
         return t
 
     async def get_pool(self) -> Pool:
-        assert _pool is not None
-        return _pool
+        if self.pool is not None:
+            return self.pool
+        else:
+            assert _pool is not None
+            return _pool
 
     def join(self, other: str, field1: str, field2: str) -> 'Table':
         t = Table(self.name)
