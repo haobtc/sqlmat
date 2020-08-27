@@ -1,8 +1,8 @@
+from .db import get_default_pool, set_default_pool, local_transaction
 from .expr import Expr, F, safe, list_expr
 
 from .stmt import (
     DBRow, table,
-    set_default_pool,
     Join, Table, Query, Action,
     Select, Delete, Update,
     Insert

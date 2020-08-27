@@ -4,7 +4,9 @@ from collections import ItemsView, KeysView, ValuesView
 import asyncpg # type: ignore
 from asyncpg.pool import Pool # type: ignore
 from asyncpg import Record, Connection
+from .db import local_transaction
 from .expr import Expr, wrap, field, F
+from .db import get_default_pool
 
 
 SqlType = Tuple[str, List['Expr']]
@@ -48,11 +50,6 @@ class DBRow:
         return repr(self._row)
 
 T = TypeVar('T', bound='DBRow')
-
-_pool: Optional[Pool] = None
-def set_default_pool(pool: Pool):
-    global _pool
-    _pool = pool
 
 
 def table(name: str) -> 'Table':
@@ -98,8 +95,7 @@ class Table:
         if self.pool is not None:
             return self.pool
         else:
-            assert _pool is not None
-            return _pool
+            return get_default_pool()
 
     def join(self, other: str, field1: str, field2: str) -> 'Table':
         t = Table(self.name)
@@ -311,22 +307,31 @@ class Action:
     def get_table(self):
         raise NotImplemented
 
+    async def run_on_conn(self, conn: Connection,
+                          stmt: str,
+                          params: List[Expr],
+                          return_one: bool=True) -> Any:
+        if return_one:
+            return await conn.fetchrow(stmt, *params)
+        else:
+            return await conn.fetch(stmt, *params)
+
     async def run(self, return_one=True):
         stmt, params = self.get_sql()
         table = self.get_table()
         if table.conn:
-            if return_one:
-                return await table.conn.fetchrow(stmt, *params)
-            else:
-                return await table.conn.fetch(stmt, *params)
+            return await self.run_on_conn(
+                table.conn,
+                stmt, params, return_one=return_one)
         else:
             pool = await table.get_pool()
+            conn = local_transaction.get_conn()
+            if conn is not None:
+                return await self.run_on_conn(
+                    conn, stmt, params)
             async with pool.acquire() as conn:
-                if return_one:
-                    return await conn.fetchrow(stmt, *params)
-                else:
-                    return await conn.fetch(stmt, *params)
-
+                return await self.run_on_conn(
+                    conn, stmt, params)
 
 class Select(Action):
     def __init__(self, query: 'Query', fields: FieldsType, for_update: bool=False, **kw):
