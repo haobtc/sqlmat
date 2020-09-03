@@ -87,8 +87,8 @@ class Table:
             t.conn = conn_or_pool
         elif isinstance(conn_or_pool, Pool):
             t.pool = conn_or_pool
-        else:
-            assert False, f'invalid conn type '
+        elif conn_or_pool is not None:
+            assert False, f'invalid conn type {conn_or_pool}'
         return t
 
     async def get_pool(self) -> Pool:
