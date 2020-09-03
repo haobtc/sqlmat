@@ -2,7 +2,7 @@ from distutils.core import setup
 from setuptools import find_packages
 
 setup(name='sqlmat',
-      version='0.1.5',
+      version='0.1.6',
       description='simply map python3 statement to postgresql statement',
       author='Zeng Ke',
       author_email='superisaac.ke@gmail.com',
