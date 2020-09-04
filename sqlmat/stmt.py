@@ -1,6 +1,6 @@
 from typing import Any, Optional, List, Tuple, Union, TypeVar, Type, Dict
 
-from collections import ItemsView, KeysView, ValuesView
+from collections.abc import ItemsView, KeysView, ValuesView
 import asyncpg # type: ignore
 from asyncpg.pool import Pool # type: ignore
 from asyncpg import Record, Connection

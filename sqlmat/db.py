@@ -16,7 +16,7 @@ def set_default_pool(pool: Pool) -> None:
     _pool = pool
 
 def get_default_pool() -> Pool:
-    assert _pool is not None
+    assert _pool is not None, "no default pool set, call set_default_pool() first!"
     return _pool
 
 class LocalTxStack:
@@ -63,11 +63,21 @@ def contextvar_available() -> bool:
 
 if contextvar_available():
     from contextvars import ContextVar
-    txstack: ContextVar[LocalTxStack] = ContextVar('txs')
+    txstack: ContextVar[LocalTxStack] = ContextVar(
+        'txs', default=None)
+
+    def get_localtx() -> LocalTxStack:
+        localtx = txstack.get()
+        if localtx is None:
+            localtx = LocalTxStack()
+            txstack.set(localtx)
+        return localtx
+
+
 
 class LocalTransaction:
     '''
-    Coroutine local tranaction, it depends on contextvars library which introduced in python 3.7
+    Coroutine local transaction, it depends on contextvars library which introduced in python 3.7
     Example usages:
     >>> async with local_transaction(pool, ...):
             await table('users').filter(...).update(...)
@@ -77,7 +87,7 @@ class LocalTransaction:
     _pool: Pool
 
     @staticmethod
-    def get_conn(self, pool: Optional[Pool] = None) -> Optional[Connection]:
+    def get_conn(pool: Optional[Pool] = None) -> Optional[Connection]:
         '''
         try get connection from local contextvars, if the python version is too low, then return None
 
@@ -85,7 +95,10 @@ class LocalTransaction:
         :returns: pushed connection if exists else None
         '''
         if contextvar_available():
-            localtx = txstack.get()
+            localtx = get_localtx()
+            if localtx is None:
+                localtx = LocalTxStack()
+                txstack.set(localtx)
             return localtx.get_conn(pool)
         else:
             return None
@@ -101,7 +114,7 @@ class LocalTransaction:
         self.kwargs = kwargs
 
     async def __aenter__(self) -> Connection:
-        localtx = txstack.get()
+        localtx = get_localtx()
         self._conn_proxy = self._pool.acquire()
         conn = await self._conn_proxy.__aenter__()
         localtx.push_conn(conn, pool=self._pool)
@@ -115,7 +128,7 @@ class LocalTransaction:
 
         if self._conn_proxy:
             await self._conn_proxy.__aexit__(exc_type, exc, tb)
-            localtx = txstack.get()
+            localtx = get_localtx()
             localtx.pop_conn()
 
         if exc_type is not None:
