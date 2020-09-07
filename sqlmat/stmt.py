@@ -325,13 +325,15 @@ class Action:
                 stmt, params, return_one=return_one)
         else:
             pool = await table.get_pool()
-            conn = local_transaction.get_conn()
+            conn = local_transaction.get_conn(pool=pool)
             if conn is not None:
                 return await self.run_on_conn(
-                    conn, stmt, params)
+                    conn, stmt, params,
+                    return_one=return_one)
             async with pool.acquire() as conn:
                 return await self.run_on_conn(
-                    conn, stmt, params)
+                    conn, stmt, params,
+                    return_one=return_one)
 
 class Select(Action):
     def __init__(self, query: 'Query', fields: FieldsType, for_update: bool=False, **kw):
