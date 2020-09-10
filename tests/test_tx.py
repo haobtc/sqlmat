@@ -19,7 +19,6 @@ async def test_rollback(dbpool):
             name='mike', gender='male')
         try:
             async with local_transaction() as _conn:
-                print('gggg', _conn)
                 r = await tbl.filter(
                     name='mike').update(gender='female')
 
