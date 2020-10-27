@@ -37,33 +37,27 @@ class TxFrame:
                                       self.conn,
                                       self.transactions)
 
-
-def current_task_name() -> str:
-    task = asyncio.current_task()
-    if task is None:
-        return ''
-    else:
-        return task.get_name()
-
 class FrameMap:
     '''
     A map of TxFrames for each pool
     '''
-    _task_name: str  # record the current name
+    #_task_name: str  # record the current name
     entries: Dict[Pool, TxFrame]
 
     def __init__(self):
-        self._task_name = current_task_name()
+        #self._task_name = current_task_name()
+        self._ctask = asyncio.current_task()
         self.entries = defaultdict(TxFrame)
 
     def in_current_task(self) -> bool:
-        return self._task_name == current_task_name()
+        #return self._task_name == current_task_name()
+        return self._ctask == asyncio.current_task()
 
     def get_frame(self, pool: Pool) -> 'TxFrame':
         return self.entries[pool]
 
 def contextvar_available() -> bool:
-    return sys.version >= '3.8'
+    return sys.version >= '3.7'
 
 if contextvar_available():
     from contextvars import ContextVar
