@@ -1,5 +1,7 @@
+from typing import Tuple, List
 import sys
 import os
+import shlex
 import asyncio
 import argparse
 import logging
@@ -8,31 +10,35 @@ from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
-def find_dsn(prog: str, desc: str) -> str:
+def find_dsn(prog: str, desc: str) -> Tuple[str, List[str]]:
     parser = argparse.ArgumentParser(
-        #prog='sqlmat-genmigrate',
         prog=prog,
         description=desc)
     parser.add_argument('-d', '--dsn',
                         type=str,
                         help='postgresql dsn')
 
+    parser.add_argument('callee_args',
+                        type=str,
+                        nargs='*',
+                        help='command line arguments of callee programs')
+
     args = parser.parse_args()
     if args.dsn:
-        return args.dsn
+        return args.dsn, args.callee_args
 
     dsn = os.getenv('SQLMAT_DSN')
     if dsn:
-        return dsn
+        return dsn, args.callee_args
 
     user = os.getenv('USER', '')
     default_dsn = f'postgres://{user}@127.0.0.1:5432/{user}'
 
     logger.warning('no postgres dsn specified, use %s instead', default_dsn)
-    return default_dsn
+    return default_dsn, args.callee_args
 
 # run psql client
-async def run_shell(dsn: str) -> None:
+async def run_shell(dsn: str, callee_args: List[str]) -> None:
     p = urlparse(dsn)
     username = p.username or ''
     password = p.password or ''
@@ -46,17 +52,17 @@ async def run_shell(dsn: str) -> None:
             file=temp_pgpass,
             flush=True)
     os.environ['PGPASSFILE'] = temp_pgpass.name
-    command = 'psql -h{} -p{} -U{} {}'.format(hostname, port, username, dbname)
+    command = 'psql -h{} -p{} -U{} {} {}'.format(hostname, port, username, shlex.join(callee_args), dbname)
     proc = await asyncio.create_subprocess_shell(command)
     await proc.communicate()
 
 def cl_run_shell() -> None:
-    dsn = find_dsn('sqlmat-shell', 'run psql client shell')
+    dsn, callee_args = find_dsn('sqlmat-shell', 'run psql client shell')
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(run_shell(dsn))
+    loop.run_until_complete(run_shell(dsn, callee_args))
 
 # run dbdump
-async def run_dbdump(dsn: str) -> None:
+async def run_dbdump(dsn: str, callee_args: List[str]) -> None:
     p = urlparse(dsn)
     username = p.username or ''
     password = p.password or ''
@@ -70,14 +76,14 @@ async def run_dbdump(dsn: str) -> None:
         file=temp_pgpass,
         flush=True)
     os.environ['PGPASSFILE'] = temp_pgpass.name
-    command = 'pg_dump -h{} -p{} -U{} {}'.format(hostname, port, username, dbname)
+    command = 'pg_dump -h{} -p{} -U{} {} {}'.format(hostname, port, username, shlex.join(callee_args), dbname)
     proc = await asyncio.create_subprocess_shell(command)
     await proc.communicate()
 
 def cl_run_dbdump() -> None:
-    dsn = find_dsn('sqlmat-dump', 'dump database')
+    dsn, callee_args = find_dsn('sqlmat-dump', 'dump database')
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(run_dbdump(dsn))
+    loop.run_until_complete(run_dbdump(dsn, callee_args))
 
 # generate alembic migrations
 def gen_migrate(dsn: str) -> None:
