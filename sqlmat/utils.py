@@ -37,6 +37,12 @@ def find_dsn(prog: str, desc: str) -> Tuple[str, List[str]]:
     logger.warning('no postgres dsn specified, use %s instead', default_dsn)
     return default_dsn, args.callee_args
 
+def joinargs(callee_args: List[str]) -> str:
+    if hasattr(shlex, 'join'):
+        return shlex.join(callee_args)
+    else:
+        return ' '.join(shlex.quote(a) for a in callee_args)
+
 # run psql client
 async def run_shell(dsn: str, callee_args: List[str]) -> None:
     p = urlparse(dsn)
@@ -52,7 +58,7 @@ async def run_shell(dsn: str, callee_args: List[str]) -> None:
             file=temp_pgpass,
             flush=True)
     os.environ['PGPASSFILE'] = temp_pgpass.name
-    command = 'psql -h{} -p{} -U{} {} {}'.format(hostname, port, username, shlex.join(callee_args), dbname)
+    command = 'psql -h{} -p{} -U{} {} {}'.format(hostname, port, username, joinargs(callee_args), dbname)
     proc = await asyncio.create_subprocess_shell(command)
     await proc.communicate()
 
@@ -76,7 +82,7 @@ async def run_dbdump(dsn: str, callee_args: List[str]) -> None:
         file=temp_pgpass,
         flush=True)
     os.environ['PGPASSFILE'] = temp_pgpass.name
-    command = 'pg_dump -h{} -p{} -U{} {} {}'.format(hostname, port, username, shlex.join(callee_args), dbname)
+    command = 'pg_dump -h{} -p{} -U{} {} {}'.format(hostname, port, username, joinargs(callee_args), dbname)
     proc = await asyncio.create_subprocess_shell(command)
     await proc.communicate()
 
