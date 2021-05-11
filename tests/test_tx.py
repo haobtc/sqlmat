@@ -2,7 +2,7 @@ import pytest
 import asyncio
 import asyncpg
 from sqlmat import table, F
-from sqlmat import table, F, set_default_pool, get_default_pool, local_transaction
+from sqlmat import table, F, set_default_pool, get_default_pool, local_transaction, atomic
 
 from .fixtures import dbpool
 
@@ -62,6 +62,48 @@ async def test_nest_tx(dbpool):
                 # isolation is repeatable_read, but it's the same transaction
                 assert rm['info'] == 'info 12'
                 raise AbortTransaction()
+        except AbortTransaction:
+            pass
+
+        r = await tbl.filter(name='marry').get_one()
+        assert r['info'] == 'info 11'
+        r = await tbl.filter(name='mike').get_one()
+        assert r['info'] == 'info 01'
+    finally:
+        await tbl.delete()
+
+
+@pytest.mark.asyncio
+async def test_atomic_tx(dbpool):
+    set_default_pool(dbpool)
+
+    tbl = table('testuser')
+
+    @atomic(isolation='repeatable_read')
+    async def f1():
+        r = await tbl.filter(
+            name='mike').update(info='info 02')
+        await f2()
+        rm = await tbl.filter(name='marry').get_one()
+        # isolation is repeatable_read, but it's the same transaction
+        assert rm['info'] == 'info 12'
+        raise AbortTransaction()
+
+    @atomic(isolation='repeatable_read')
+    async def f2():
+        r = await tbl.filter(
+            name='marry').update(info='info 12')
+        assert r['info'] == 'info 12'
+
+    try:
+        await tbl.insert(
+            name='mike', gender='male', info='info 01')
+
+        await tbl.insert(
+            name='marry', gender='female', info='info 11')
+
+        try:
+            await f1()
         except AbortTransaction:
             pass
 

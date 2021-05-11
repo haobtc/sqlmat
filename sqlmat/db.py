@@ -3,6 +3,7 @@ db operations from asyncpg
 '''
 from typing import Dict, Optional, Any
 import logging
+from functools import wraps
 import sys
 import asyncio
 from collections import defaultdict
@@ -139,3 +140,12 @@ class LocalTransaction:
 
 local_transaction = LocalTransaction
 
+# a decrorator
+def atomic(pool: Optional[Pool] = None, **kwargs):
+    def _wrapper(fn):
+        @wraps(fn)
+        async def __w(*args, **kwargs):
+            async with local_transaction(pool=pool, **kwargs):
+                return await fn(*args, **kwargs)
+        return __w
+    return _wrapper
