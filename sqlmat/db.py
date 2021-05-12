@@ -141,11 +141,11 @@ class LocalTransaction:
 local_transaction = LocalTransaction
 
 # a decrorator
-def atomic(pool: Optional[Pool] = None, **kwargs):
+def atomic(pool: Optional[Pool] = None, **txkwargs):
     def _wrapper(fn):
         @wraps(fn)
         async def __w(*args, **kwargs):
-            async with local_transaction(pool=pool, **kwargs):
+            async with local_transaction(pool=pool, **txkwargs):
                 return await fn(*args, **kwargs)
         return __w
     return _wrapper
