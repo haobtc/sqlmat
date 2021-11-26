@@ -1,4 +1,5 @@
-from typing import Tuple, List
+from typing import Tuple, List, Optional
+import json
 import sys
 import os
 import shlex
@@ -10,6 +11,28 @@ from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
+def get_sqlmat_json() -> Optional[dict]:
+    json_path = os.getenv('SQLMAT_JSON_PATH')
+    if json_path:
+        with open(json_path) as f:
+            cfg = json.load(f)
+            return cfg
+
+    # iterate through the current dir up to the root dir "/" to find a
+    # .sqlmat.json
+    workdir = os.path.abspath(os.getcwd())
+    while workdir:
+        json_path = os.path.join(workdir, '.sqlmat.json')
+        if os.path.exists(json_path):
+            with open(json_path) as f:
+                cfg = json.load(f)
+                return cfg
+        pardir = os.path.abspath(os.path.join(workdir, '..'))
+        if pardir == workdir:
+            break
+        workdir = pardir
+    return None
+
 def find_dsn(prog: str, desc: str) -> Tuple[str, List[str]]:
     parser = argparse.ArgumentParser(
         prog=prog,
@@ -18,19 +41,34 @@ def find_dsn(prog: str, desc: str) -> Tuple[str, List[str]]:
                         type=str,
                         help='postgresql dsn')
 
+    parser.add_argument('-g', '--db',
+                        type=str,
+                        default='default',
+                        help='postgresql db instance defined in .sqlmat.json')
+
     parser.add_argument('callee_args',
                         type=str,
                         nargs='*',
                         help='command line arguments of callee programs')
 
+    # from arguments
     args = parser.parse_args()
     if args.dsn:
         return args.dsn, args.callee_args
 
+    # from env variable
     dsn = os.getenv('SQLMAT_DSN')
     if dsn:
         return dsn, args.callee_args
 
+    # find dsn from ./.sqlmat.json
+    cfg = get_sqlmat_json()
+    if cfg:
+        dsn = cfg['databases'][args.db]['dsn']
+        assert isinstance(dsn, str)
+        return dsn, args.callee_args
+
+    # default dsn using username
     user = os.getenv('USER', '')
     default_dsn = f'postgres://{user}@127.0.0.1:5432/{user}'
 
@@ -98,7 +136,7 @@ def gen_migrate(dsn: str) -> None:
         f.write(init_data)
 
 def cl_gen_migrate() -> None:
-    dsn = find_dsn('sqlmat-genmigrate', 'generate alembic migration')
+    dsn, callee_args = find_dsn('sqlmat-genmigrate', 'generate alembic migration')
     gen_migrate(dsn)
     print('Wrote alembic.ini')
 

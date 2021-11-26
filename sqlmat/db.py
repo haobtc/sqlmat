@@ -1,28 +1,51 @@
 '''
 db operations from asyncpg
 '''
+
 from typing import Dict, Optional, Any
-import logging
-from functools import wraps
+import os
 import sys
 import asyncio
+import logging
+from functools import wraps
 from collections import defaultdict
-from asyncpg import Record, Connection
+from asyncpg import Record, Connection, create_pool
 from asyncpg.transaction import Transaction
 from asyncpg.pool import Pool
-import logging
+
+from .utils import get_sqlmat_json
 
 logger = logging.getLogger(__name__)
 
-_pool: Optional[Pool] = None
+_pools: Dict[str, Pool] = {}
+
+def get_pool(name: str) -> Pool:
+    if name in _pools:
+        return _pools[name]
+
+    cfg = get_sqlmat_json()
+    if not cfg:
+        raise KeyError
+
+    dbcfg = cfg['databases'][name]
+    dsn = dbcfg['dsn']
+    loop = asyncio.get_event_loop()
+    # wait for async method
+    pool = loop.run_until_complete(create_pool(
+        dsn=dsn,
+        min_size=dbcfg.get('min_size', 1)))
+    _pools[name] = pool
+    return pool
+
+
 def set_default_pool(pool: Pool) -> None:
-    global _pool
-    _pool = pool
+    _pools['default'] = pool
 
 def get_default_pool() -> Pool:
-    assert _pool is not None, "no default pool set, call set_default_pool() first!"
-    return _pool
-
+    try:
+        return get_pool('default')
+    except KeyError:
+        raise Exception("no default pool set, call set_default_pool() first!")
 
 class TxFrame:
     '''
