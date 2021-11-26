@@ -18,8 +18,7 @@ from .utils import get_sqlmat_json
 logger = logging.getLogger(__name__)
 
 _pools: Dict[str, Pool] = {}
-
-def get_pool(name: str) -> Pool:
+async def get_pool(name: str) -> Pool:
     if name in _pools:
         return _pools[name]
 
@@ -29,23 +28,36 @@ def get_pool(name: str) -> Pool:
 
     dbcfg = cfg['databases'][name]
     dsn = dbcfg['dsn']
-    loop = asyncio.get_event_loop()
+    loop = asyncio.new_event_loop()
     # wait for async method
-    pool = loop.run_until_complete(create_pool(
+    pool = await create_pool(
         dsn=dsn,
-        min_size=dbcfg.get('min_size', 1)))
+        min_size=dbcfg.get('min_size', 0),
+        max_size=dbcfg.get('max_size', 4))
     _pools[name] = pool
     return pool
-
 
 def set_default_pool(pool: Pool) -> None:
     _pools['default'] = pool
 
 def get_default_pool() -> Pool:
-    try:
-        return get_pool('default')
-    except KeyError:
+    if 'default' in _pools:
+        return _pools['default']
+    else:
         raise Exception("no default pool set, call set_default_pool() first!")
+
+async def init_pools() -> None:
+    cfg = get_sqlmat_json()
+    if not cfg:
+        return
+
+    for name, dbcfg in cfg['databases'].items():
+        pool = await create_pool(
+            dsn=dbcfg['dsn'],
+            min_size=dbcfg.get('min_size', 0),
+            max_size=dbcfg.get('max_size', 4)
+        )
+        _pools[name] = pool
 
 class TxFrame:
     '''
@@ -102,40 +114,43 @@ class LocalTransaction:
     >>> async with local_transaction(pool, ...):
             await table('users').filter(...).update(...)
     '''
-    _pool: Pool
+    _pool: Optional[Pool]
 
     @staticmethod
-    def get_conn(pool: Optional[Pool] = None) -> Optional[Connection]:
+    def get_conn(pool: Pool) -> Optional[Connection]:
         '''
         try get connection from local contextvars, if the python version is too low, then return None
 
         :param pool: the db pool based with to look up a connection
         :returns: pushed connection if exists else None
         '''
-        if pool is None:
-            pool = get_default_pool()
-
+        assert pool is not None
         if contextvar_available():
             frame = _get_framemap().get_frame(pool)
             return frame.conn
         else:
             return None
 
-    def __init__(self, pool: Optional[Pool] = None, **kwargs):
+    def __init__(self, pool: Optional[Pool]=None, **kwargs):
         '''
         :param kwargs: the arguments passed to conn.transaction()
         '''
         assert contextvar_available(), 'python version must be larger then 3.7 to support contextvars'
-        if pool is None:
-            pool = get_default_pool()
         self._pool = pool
         self.kwargs = kwargs
         fmap = _get_framemap()
 
+    async def ensure_pool(self) -> Pool:
+        if self._pool is None:
+            return await get_pool('default')
+        else:
+            return self._pool
+
     async def __aenter__(self) -> Connection:
-        frame = _get_framemap().get_frame(self._pool)
+        pool = await self.ensure_pool()
+        frame = _get_framemap().get_frame(pool)
         if frame.conn is None:
-            frame.conn_proxy = self._pool.acquire()
+            frame.conn_proxy = pool.acquire()
             frame.conn = await frame.conn_proxy.__aenter__()
 
         tx = frame.conn.transaction(**self.kwargs)
@@ -144,7 +159,8 @@ class LocalTransaction:
         return frame.conn
 
     async def __aexit__(self, exc_type, exc, tb) -> None:
-        frame = _get_framemap().get_frame(self._pool)
+        pool = await self.ensure_pool()
+        frame = _get_framemap().get_frame(pool)
         try:
             tx = frame.transactions.pop()
             await tx.__aexit__(exc_type, exc, tb)

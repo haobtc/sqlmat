@@ -6,7 +6,7 @@ from asyncpg.pool import Pool # type: ignore
 from asyncpg import Record, Connection
 from .db import local_transaction
 from .expr import Expr, wrap, field, F
-from .db import get_default_pool
+from .db import get_pool
 
 
 SqlType = Tuple[str, List['Expr']]
@@ -73,29 +73,32 @@ class Table:
     name: str
     joins: List[Join]
     conn: Optional[Connection] = None
-    pool: Optional[Pool] = None
+    pool: Union[Pool, str, None] = None
+
     def __init__(self, name: str):
         self.name = name
         self.joins = []
         self.conn = None
         self.pool = None
 
-    def using(self, conn_or_pool: Union[Connection, Pool]) -> 'Table':
+    def using(self, conn_or_pool: Union[Connection, Pool, str]) -> 'Table':
         t = Table(self.name)
         t.joins = self.joins[::]
         if isinstance(conn_or_pool, Connection):
             t.conn = conn_or_pool
-        elif isinstance(conn_or_pool, Pool):
+        elif isinstance(conn_or_pool, (Pool, str)):
             t.pool = conn_or_pool
         elif conn_or_pool is not None:
             assert False, f'invalid conn type {conn_or_pool}'
         return t
 
     async def get_pool(self) -> Pool:
-        if self.pool is not None:
-            return self.pool
+        if self.pool is None:
+            return await get_pool('default')
+        elif isinstance(self.pool, str):
+            return await get_pool(self.pool)
         else:
-            return get_default_pool()
+            return self.pool
 
     def join(self, other: str, field1: str, field2: str) -> 'Table':
         t = Table(self.name)
