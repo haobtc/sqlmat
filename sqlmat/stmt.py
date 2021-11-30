@@ -6,7 +6,7 @@ from asyncpg.pool import Pool # type: ignore
 from asyncpg import Record, Connection
 from .db import local_transaction
 from .expr import Expr, wrap, field, F
-from .db import get_pool
+from .db import find_pool
 
 
 SqlType = Tuple[str, List['Expr']]
@@ -94,9 +94,9 @@ class Table:
 
     async def get_pool(self) -> Pool:
         if self.pool is None:
-            return await get_pool('default')
+            return await find_pool('default')
         elif isinstance(self.pool, str):
-            return await get_pool(self.pool)
+            return await find_pool(self.pool)
         else:
             return self.pool
 

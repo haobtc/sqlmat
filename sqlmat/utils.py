@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
-def get_sqlmat_json() -> Optional[dict]:
+def find_sqlmat_json() -> Optional[dict]:
     json_path = os.getenv('SQLMAT_JSON_PATH')
     if json_path:
         with open(json_path) as f:
@@ -27,10 +27,10 @@ def get_sqlmat_json() -> Optional[dict]:
             with open(json_path) as f:
                 cfg = json.load(f)
                 return cfg
-        pardir = os.path.abspath(os.path.join(workdir, '..'))
-        if pardir == workdir:
+        parentdir = os.path.abspath(os.path.join(workdir, '..'))
+        if parentdir == workdir:
             break
-        workdir = pardir
+        workdir = parentdir
     return None
 
 def find_dsn(prog: str, desc: str) -> Tuple[str, List[str]]:
@@ -62,7 +62,7 @@ def find_dsn(prog: str, desc: str) -> Tuple[str, List[str]]:
         return dsn, args.callee_args
 
     # find dsn from ./.sqlmat.json
-    cfg = get_sqlmat_json()
+    cfg = find_sqlmat_json()
     if cfg:
         dsn = cfg['databases'][args.db]['dsn']
         assert isinstance(dsn, str)

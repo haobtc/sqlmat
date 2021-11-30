@@ -13,16 +13,22 @@ from asyncpg import Record, Connection, create_pool
 from asyncpg.transaction import Transaction
 from asyncpg.pool import Pool
 
-from .utils import get_sqlmat_json
+from .utils import find_sqlmat_json
 
 logger = logging.getLogger(__name__)
 
 _pools: Dict[str, Pool] = {}
-async def get_pool(name: str) -> Pool:
+def set_pool(name: str, pool: Pool) -> None:
+    _pools[name] = pool
+
+def get_pool(name: str) -> Optional[Pool]:
+    return _pools.get(name)
+
+async def find_pool(name: str) -> Pool:
     if name in _pools:
         return _pools[name]
 
-    cfg = get_sqlmat_json()
+    cfg = find_sqlmat_json()
     if not cfg:
         raise KeyError
 
@@ -38,7 +44,7 @@ async def get_pool(name: str) -> Pool:
     return pool
 
 def set_default_pool(pool: Pool) -> None:
-    _pools['default'] = pool
+    set_pool('default', pool)
 
 def get_default_pool() -> Pool:
     if 'default' in _pools:
@@ -46,8 +52,11 @@ def get_default_pool() -> Pool:
     else:
         raise Exception("no default pool set, call set_default_pool() first!")
 
-async def init_pools() -> None:
-    cfg = get_sqlmat_json()
+async def discover() -> None:
+    '''discover database pools from env variable SQLMAT_JSON_PATH or
+    .sqlmat.json
+    '''
+    cfg = find_sqlmat_json()
     if not cfg:
         return
 
@@ -142,7 +151,7 @@ class LocalTransaction:
 
     async def ensure_pool(self) -> Pool:
         if self._pool is None:
-            return await get_pool('default')
+            return await find_pool('default')
         else:
             return self._pool
 
