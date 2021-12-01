@@ -31,6 +31,7 @@ def find_sqlmat_json() -> Optional[dict]:
         if parentdir == workdir:
             break
         workdir = parentdir
+    logger.warning('fail to find .sqlmat.json')
     return None
 
 def find_dsn(prog: str, desc: str) -> Tuple[str, List[str]]:
@@ -56,11 +57,6 @@ def find_dsn(prog: str, desc: str) -> Tuple[str, List[str]]:
     if args.dsn:
         return args.dsn, args.callee_args
 
-    # from env variable
-    dsn = os.getenv('SQLMAT_DSN')
-    if dsn:
-        return dsn, args.callee_args
-
     # find dsn from ./.sqlmat.json
     cfg = find_sqlmat_json()
     if cfg:
@@ -70,7 +66,7 @@ def find_dsn(prog: str, desc: str) -> Tuple[str, List[str]]:
 
     # default dsn using username
     user = os.getenv('USER', '')
-    default_dsn = f'postgres://{user}@127.0.0.1:5432/{user}'
+    default_dsn = f'postgres://{user}@127.0.0.1:5432/{args.db}'
 
     logger.warning('no postgres dsn specified, use %s instead', default_dsn)
     return default_dsn, args.callee_args
