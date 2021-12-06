@@ -328,7 +328,7 @@ class Action:
                 stmt, params, return_one=return_one)
         else:
             pool = await table.get_pool()
-            conn = local_transaction.get_conn(pool=pool)
+            conn = await local_transaction.get_conn(pool=pool)
             if conn is not None:
                 return await self.run_on_conn(
                     conn, stmt, params,

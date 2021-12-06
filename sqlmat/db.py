@@ -126,13 +126,15 @@ class LocalTransaction:
     _pool: Optional[Pool]
 
     @staticmethod
-    def get_conn(pool: Pool) -> Optional[Connection]:
+    async def get_conn(pool: Optional[Pool]=None) -> Optional[Connection]:
         '''
         try get connection from local contextvars, if the python version is too low, then return None
 
         :param pool: the db pool based with to look up a connection
         :returns: pushed connection if exists else None
         '''
+        if pool is None:
+            pool = await find_pool('default')
         assert pool is not None
         if contextvar_available():
             frame = _get_framemap().get_frame(pool)
