@@ -2,6 +2,7 @@ from .utils import find_sqlmat_json
 
 from .db import (
     get_pool, set_pool,
+    find_pool,
     get_default_pool, set_default_pool,
     local_transaction,
     atomic,
