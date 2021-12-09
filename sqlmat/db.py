@@ -39,7 +39,7 @@ async def find_pool(name: str) -> Pool:
     pool = await create_pool(
         dsn=dsn,
         min_size=dbcfg.get('min_size', 0),
-        max_size=dbcfg.get('max_size', 4))
+        max_size=dbcfg.get('max_size', 10))
     _pools[name] = pool
     return pool
 
@@ -64,7 +64,7 @@ async def discover() -> None:
         pool = await create_pool(
             dsn=dbcfg['dsn'],
             min_size=dbcfg.get('min_size', 0),
-            max_size=dbcfg.get('max_size', 4)
+            max_size=dbcfg.get('max_size', 10)
         )
         _pools[name] = pool
 
