@@ -1,9 +1,11 @@
-from typing import Any, Optional, List, Tuple, Union, TypeVar, Type, Dict
+from typing import Any, Optional, List, Tuple, Union, TypeVar, Type, Dict, AsyncIterator
 
 from collections.abc import ItemsView, KeysView, ValuesView
 import asyncpg # type: ignore
+
 from asyncpg.pool import Pool # type: ignore
 from asyncpg import Record, Connection
+from asyncpg.cursor import CursorFactory
 from .db import local_transaction
 from .expr import Expr, wrap, field, F
 from .db import find_pool
@@ -173,6 +175,13 @@ class Table:
     async def get_all_as(self, t: Type[T], *fields: str) -> List[T]:
         return [t(r) for r in await self.get_all(*fields)]
 
+    def get_iter(self, *fields: str) -> AsyncIterator[Record]:
+        return Query(self).get_iter(*fields)
+
+    async def get_iter_as(self, t: Type[T], *fields: str) -> AsyncIterator[T]:
+        async for r in self.get_iter(*fields):
+            yield t(r)
+
     async def update(self, **kw):
         return await Query(self).update(**kw)
 
@@ -290,6 +299,15 @@ class Query:
     async def get_all_as(self, t: Type[T], *fields: str, **kw) -> List[T]:
         return [t(r) for r in await self.get_all(*fields, **kw)]
 
+    def get_iter(self, *fields: str, **kw) -> AsyncIterator[Record]:
+        if not fields:
+            fields = ('*',)
+        return Select(self, fields, **kw).get_iter()
+
+    async def get_iter_as(self, t: Type[T], *fields: str, **kw) -> AsyncIterator[T]:
+        async for r in self.get_iter(*fields, **kw):
+            yield t(r)
+
     async def run(self) -> Any:
         return await self.select()
 
@@ -307,7 +325,10 @@ class Query:
             return Expr('value', True, None).get_sql_str(params)
 
 class Action:
-    def get_table(self):
+    def get_table(self) -> 'Table':
+        raise NotImplemented
+
+    def get_sql(self) -> SqlType:
         raise NotImplemented
 
     async def run_on_conn(self, conn: Connection,
@@ -338,13 +359,35 @@ class Action:
                     conn, stmt, params,
                     return_one=return_one)
 
+    def _run_on_conn_iter(self, conn: Connection,
+                          stmt: str,
+                          params: List[Expr]) -> CursorFactory:
+        return conn.cursor(stmt, *params)
+
+    async def run_iter(self) -> CursorFactory:
+        stmt, params = self.get_sql()
+        table = self.get_table()
+        if table.conn:
+            return self._run_on_conn_iter(
+                table.conn,
+                stmt, params)
+        else:
+            pool = await table.get_pool()
+            conn = await local_transaction.get_conn(pool=pool)
+            if conn is not None:
+                return self._run_on_conn_iter(
+                    conn, stmt, params)
+            async with pool.acquire() as conn:
+                return self._run_on_conn_iter(
+                    conn, stmt, params)
+
 class Select(Action):
     def __init__(self, query: 'Query', fields: FieldsType, for_update: bool=False, **kw):
         self.query = query
         self.fields = fields
         self.for_update = for_update
 
-    def get_table(self):
+    def get_table(self) -> 'Table':
         return self.query.table
 
     def get_sql(self) -> SqlType:
@@ -404,6 +447,14 @@ class Select(Action):
 
     async def get_all_as(self, t: Type[T]) -> List[T]:
         return [t(r) for r in await self.get_all()]
+
+    async def get_iter(self) -> AsyncIterator[Record]:
+        async for r in await self.run_iter():
+            yield r
+
+    async def get_iter_as(self, t: Type[T]) -> AsyncIterator[T]:
+        async for r in self.get_iter():
+            yield t(r)
 
 class Delete(Action):
     def __init__(self, query):
