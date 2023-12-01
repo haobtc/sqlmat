@@ -102,7 +102,7 @@ class FrameMap:
         return self.entries[pool]
 
 def contextvar_available() -> bool:
-    return sys.version >= '3.7'
+    return (sys.version_info.major, sys.version_info.minor) >= (3, 7)
 
 if contextvar_available():
     from contextvars import ContextVar
