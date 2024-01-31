@@ -382,7 +382,7 @@ class Action:
                     conn, stmt, params)
 
 class Select(Action):
-    def __init__(self, query: 'Query', fields: FieldsType, for_update: bool=False, **kw):
+    def __init__(self, query: 'Query', fields: FieldsType, for_update: Union[bool, str]=False, **kw):
         self.query = query
         self.fields = fields
         self.for_update = for_update
@@ -422,7 +422,10 @@ class Select(Action):
             lines.append('OFFSET {}'.format(self.query.offset_num))
 
         if self.for_update:
-            lines.append('FOR UPDATE')
+            if isinstance(self.for_update, str) and self.for_update.lower() == 'skip locked':
+                lines.append('FOR UPDATE SKIP LOCKED')
+            else:
+                lines.append('FOR UPDATE')
 
         return '\n'.join(lines), params
 

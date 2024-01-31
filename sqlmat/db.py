@@ -2,7 +2,7 @@
 db operations from asyncpg
 '''
 
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, List
 import os
 import sys
 import asyncio
@@ -44,6 +44,7 @@ async def find_pool(name: str) -> Pool:
     return pool
 
 def set_default_pool(pool: Pool) -> None:
+    assert isinstance(pool, Pool)
     set_pool('default', pool)
 
 def get_default_pool() -> Pool:
@@ -72,6 +73,7 @@ class TxFrame:
     '''
     Coroutine local transaction frame
     '''
+
     def __init__(self):
         self.conn_proxy = None
         self.conn = None

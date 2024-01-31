@@ -5,7 +5,7 @@ from .fixtures import dbpool
 
 @pytest.mark.asyncio
 async def test_select(dbpool):
-    set_default_pool(dbpool)
+    set_default_pool(await dbpool)
 
     tbl = table('testuser')
     await tbl.using(None).insert(
@@ -14,6 +14,7 @@ async def test_select(dbpool):
     try:
         r = await tbl.filter(
             name='mike').get_one()
+        assert r is not None
         assert r['gender'] == 'male'
     finally:
         await tbl.delete()
@@ -26,7 +27,7 @@ class TUser(DBRow):
 
 @pytest.mark.asyncio
 async def test_get_iter(dbpool):
-    set_default_pool(dbpool)
+    set_default_pool(await dbpool)
 
     tbl = table('testuser')
     await tbl.using(None).insert(
@@ -55,7 +56,7 @@ async def test_get_iter(dbpool):
 
 @pytest.mark.asyncio
 async def test_update(dbpool):
-    set_default_pool(dbpool)
+    set_default_pool(await dbpool)
 
     tbl = table('testuser')
     await tbl.insert(

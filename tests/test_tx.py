@@ -11,7 +11,7 @@ class AbortTransaction(Exception):
 
 @pytest.mark.asyncio
 async def test_rollback(dbpool):
-    set_default_pool(dbpool)
+    set_default_pool(await dbpool)
 
     tbl = table('testuser')
     try:
@@ -35,7 +35,7 @@ async def test_rollback(dbpool):
 
 @pytest.mark.asyncio
 async def test_nest_tx(dbpool):
-    set_default_pool(dbpool)
+    set_default_pool(await dbpool)
 
     tbl = table('testuser')
 
@@ -60,6 +60,7 @@ async def test_nest_tx(dbpool):
 
                 rm = await tbl.filter(name='marry').get_one()
                 # isolation is repeatable_read, but it's the same transaction
+                assert rm is not None
                 assert rm['info'] == 'info 12'
                 raise AbortTransaction()
         except AbortTransaction:
@@ -75,7 +76,7 @@ async def test_nest_tx(dbpool):
 
 @pytest.mark.asyncio
 async def test_atomic_tx(dbpool):
-    set_default_pool(dbpool)
+    set_default_pool(await dbpool)
 
     tbl = table('testuser')
 
@@ -85,6 +86,7 @@ async def test_atomic_tx(dbpool):
             name='mike').update(info='info 02')
         await f2()
         rm = await tbl.filter(name='marry').get_one()
+        assert rm is not None
         # isolation is repeatable_read, but it's the same transaction
         assert rm['info'] == 'info 12'
         raise AbortTransaction()
@@ -108,6 +110,7 @@ async def test_atomic_tx(dbpool):
             pass
 
         r = await tbl.filter(name='marry').get_one()
+        assert r is not None
         assert r['info'] == 'info 11'
         r = await tbl.filter(name='mike').get_one()
         assert r['info'] == 'info 01'
@@ -131,7 +134,7 @@ async def update_marry_info(c1):
 
 @pytest.mark.asyncio
 async def test_cor_tx(dbpool):
-    set_default_pool(dbpool)
+    set_default_pool(await dbpool)
     tbl = table('testuser')
 
     try:
@@ -147,12 +150,14 @@ async def test_cor_tx(dbpool):
                 r = await tbl.filter(
                     name='mike').update(info='info 02')
                 rm = await tbl.filter(name='marry').get_one()
+                assert rm is not None
                 assert rm['info'] == 'info 11'
 
                 # isolation is repeatable_read
                 t1 = asyncio.create_task(update_marry_info(c1))
                 await asyncio.sleep(2)
                 rm = await tbl.filter(name='marry').get_one()
+                assert rm is not None
                 assert rm['info'] == 'info 11'
                 raise AbortTransaction()
         except AbortTransaction:
