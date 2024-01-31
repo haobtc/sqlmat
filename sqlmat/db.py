@@ -32,14 +32,13 @@ async def find_pool(name: str) -> Pool:
     if not cfg:
         raise KeyError
 
-    dbcfg = cfg['databases'][name]
-    dsn = dbcfg['dsn']
+    dbcfg = cfg.databases[name]
     loop = asyncio.new_event_loop()
     # wait for async method
     pool = await create_pool(
-        dsn=dsn,
-        min_size=dbcfg.get('min_size', 0),
-        max_size=dbcfg.get('max_size', 10))
+        dsn=dbcfg.dsn,
+        min_size=dbcfg.min_size,
+        max_size=dbcfg.max_size)
     _pools[name] = pool
     return pool
 
@@ -61,11 +60,11 @@ async def discover() -> None:
     if not cfg:
         return
 
-    for name, dbcfg in cfg['databases'].items():
+    for name, dbcfg in cfg.databases.items():
         pool = await create_pool(
-            dsn=dbcfg['dsn'],
-            min_size=dbcfg.get('min_size', 0),
-            max_size=dbcfg.get('max_size', 10)
+            dsn=dbcfg.dsn,
+            min_size=dbcfg.min_size,
+            max_size=dbcfg.max_size
         )
         _pools[name] = pool
 

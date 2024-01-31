@@ -2,7 +2,7 @@ from distutils.core import setup
 from setuptools import find_packages
 
 setup(name='sqlmat',
-      version='0.2.19',
+      version='0.2.20',
       description='simply map python3 statement to postgresql statement',
       author='Zeng Ke',
       author_email='superisaac.ke@gmail.com',
@@ -12,6 +12,7 @@ setup(name='sqlmat',
           'pytest-asyncio'
       ],
       install_requires=[
+          'pydantic >= 2.6.0',
           'asyncpg >= 0.25.0',
           'alembic >= 1.7.5'
       ],

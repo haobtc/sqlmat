@@ -1,4 +1,4 @@
-from typing import Tuple, List, Optional
+from typing import Tuple, List, Optional, Mapping
 import json
 import sys
 import os
@@ -7,11 +7,20 @@ import asyncio
 import argparse
 import logging
 import tempfile
+from pydantic import BaseModel
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
-def find_sqlmat_json() -> Optional[dict]:
+class SqlmatDatabaseConfig(BaseModel):
+    dsn: str
+    min_size: int = 0
+    max_size: int = 10
+
+class SqlmatConfig(BaseModel):
+    databases: Mapping[str, SqlmatDatabaseConfig]
+
+def find_sqlmat_json() -> Optional[SqlmatConfig]:
     json_path = os.getenv('SQLMAT_JSON_PATH')
     if json_path:
         with open(json_path) as f:
@@ -25,8 +34,8 @@ def find_sqlmat_json() -> Optional[dict]:
         json_path = os.path.join(workdir, '.sqlmat.json')
         if os.path.exists(json_path):
             with open(json_path) as f:
-                cfg = json.load(f)
-                return cfg
+                cfgdata = json.load(f)
+                return SqlmatConfig(**cfgdata)
         parentdir = os.path.abspath(os.path.join(workdir, '..'))
         if parentdir == workdir:
             break
@@ -60,7 +69,7 @@ def find_dsn(prog: str, desc: str) -> Tuple[str, List[str]]:
     # find dsn from ./.sqlmat.json
     cfg = find_sqlmat_json()
     if cfg:
-        dsn = cfg['databases'][args.db]['dsn']
+        dsn = cfg.databases[args.db].dsn
         assert isinstance(dsn, str)
         return dsn, args.callee_args
 
