@@ -156,6 +156,14 @@ class Table:
     async def delete(self):
         return await Query(self).delete()
 
+    async def select_for_update_skip_locked(self, *fields, **kw) -> List[Record]:
+        kw['for_update'] = 'skip locked'
+        return await self.select(*fields, **kw)
+
+    async def select_for_update(self, *fields, **kw) -> List[Record]:
+        kw['for_update'] = True
+        return await self.select(*fields, **kw)
+
     async def select(self, *fields: str, **kw) -> List[Record]:
         return await Query(self).select(*fields, **kw)
 
@@ -276,6 +284,14 @@ class Query:
         if self.grouping:
             groups = [wrap(g) for g in self.grouping]
             return 'GROUP BY {}'.format(','.join(groups))
+
+    async def select_for_update_skip_locked(self, *fields, **kw) -> List[Record]:
+        kw['for_update'] = 'skip locked'
+        return await self.select(*fields, **kw)
+
+    async def select_for_update(self, *fields, **kw) -> List[Record]:
+        kw['for_update'] = True
+        return await self.select(*fields, **kw)
 
     async def select(self, *fields: str, **kw) -> List[Record]:
         if not fields:
